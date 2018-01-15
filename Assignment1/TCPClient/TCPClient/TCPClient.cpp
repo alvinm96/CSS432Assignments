@@ -34,6 +34,10 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  if ((nbufs * bufsize) != 1500) {
+    std::cerr << "databuf size incorrect; should equal to 1500" << std::endl;
+  }
+
   sockaddr_in sendSockAddr;
   bzero((char *)&sendSockAddr, sizeof(sendSockAddr));
   sendSockAddr.sin_family = AF_INET;
@@ -54,49 +58,71 @@ int main(int argc, char *argv[])
   }
 
   struct timeval start;
+  struct timeval lap;
+  struct timeval end;
 
-  gettimeofday(&start, NULL);
+  gettimeofday(&start, NULL); // starting time
   
   char databuf[nbufs][bufsize];
+
   int n;
+
   for (int i = 0; i < repetition; i++) {
-    if (type == 1) {
+    if (type == 1) { // multiple writes
       for (int j = 0; j < nbufs; j++) {
         n = write(clientSd, databuf[j], bufsize);
-
         if (n < 0) {
           std::cerr << "Error writing to socket" << std::endl;
+          return 1;
         }
       }
     }
-    else if (type == 2) {
+    else if (type == 2) { // writev
       struct iovec vector[nbufs];
 
       for (int j = 0; j < nbufs; j++) {
         vector[j].iov_base = databuf[j];
         vector[j].iov_len = bufsize;
       }
-      write(clientSd, vector, nbufs);
+      n = writev(clientSd, vector, nbufs);
 
       if (n < 0) {
         std::cerr << "Error writing to socket" << std::endl;
+        return 1;
       }
     }
-    else if (type == 3) {
-      write(clientSd, databuf, nbufs * bufsize);
+    else if (type == 3) { // single write
+      n = write(clientSd, databuf, nbufs * bufsize);
 
       if (n < 0) {
         std::cerr << "Error writing to socket" << std::endl;
+        return 1;
       }
     }
   }
-  
-  int buffer;
+  std::cout << "Finished writing" << std::endl;
+  gettimeofday(&lap, NULL); // data sending time
 
-  n = read(clientSd, &buffer, sizeof(buffer));
-  if (n < 0) {
-    std::cerr << "Error reading from socket" << std::endl;
+  long lapTime = (lap.tv_usec - start.tv_usec);
+  int buffer = 0;
+
+  while (true) {
+    n = read(clientSd, &buffer, sizeof(buffer));
+    if (n == -1) {
+      std::cerr << "Error reading from socket" << std::endl;
+    }
+    else if (n == 0) {
+      std::cout << "Finished reading from server" << std::endl;
+      break;
+    }
   }
+  gettimeofday(&end, NULL); // round trip time
+
+  long roundTripTime = end.tv_usec - start.tv_usec;
+
+  std::cout << "Test " << type << ": data-sending time = " << 
+    lapTime << "usec, round-trip time = " << 
+    roundTripTime << "usec, #reads = " << buffer << std::endl;
 
   close(clientSd);
 
